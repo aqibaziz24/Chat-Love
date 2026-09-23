@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Picture Upload Manager</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/appwrite@17.0.0"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f4f6f8;
+      font-family: Arial, sans-serif;
+      color: #222;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: auto;
+    }
+
+    .box {
+      background: white;
+      padding: 22px;
+      border-radius: 14px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+      margin-bottom: 25px;
+    }
+
+    h1 {
+      margin-top: 0;
+      text-align: center;
+    }
+
+    .upload-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    input[type="file"] {
+      flex: 1;
+      min-width: 240px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    button {
+      border: none;
+      padding: 11px 17px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      color: white;
+    }
+
+    .upload-btn {
+      background: #2563eb;
+    }
+
+    .upload-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .download-btn {
+      background: #16a34a;
+    }
+
+    .delete-btn {
+      background: #dc2626;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #message {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .success {
+      display: block !important;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .error {
+      display: block !important;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .loading {
+      display: block !important;
+      background: #e0f2fe;
+      color: #075985;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      overflow: hidden;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .card img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
+      background: #eee;
+    }
+
+    .card-content {
+      padding: 12px;
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: bold;
+      word-break: break-word;
+      margin-bottom: 10px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .actions button {
+      flex: 1;
+      font-size: 13px;
+      padding: 9px 5px;
+    }
+
+    #emptyMessage {
+      text-align: center;
+      color: #666;
+      padding: 30px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="box">
+      <h1>Picture Upload Manager</h1>
+
+      <div class="upload-row">
+        <input
+          type="file"
+          id="fileInput"
+          accept="image/*"
+          multiple
+        />
+
+        <button class="upload-btn" id="uploadBtn">
+          Upload Pictures
+        </button>
+      </div>
+
+      <div id="message"></div>
+    </div>
+
+    <div class="box">
+      <h2>Saved Pictures</h2>
+
+      <div id="gallery" class="gallery"></div>
+      <div id="emptyMessage">Loading pictures...</div>
+    </div>
+  </div>
+
+  <script>
+    // ==============================
+    // Appwrite Configuration
+    // ==============================
+
+    const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
+    const PROJECT_ID = "6aa94a47002c3014b299";
+
+    // Appwrite Storage mein banaye gaye bucket ka ID yahan paste karein
+    const BUCKET_ID = "pictures";
+
+    // ==============================
+    // Appwrite Initialization
+    // ==============================
+
+    const client = new Appwrite.Client();
+
+    client
+      .setEndpoint(APPWRITE_ENDPOINT)
+      .setProject(PROJECT_ID);
+
+    const storage = new Appwrite.Storage(client);
+
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const gallery = document.getElementById("gallery");
+    const emptyMessage = document.getElementById("emptyMessage");
+    const message = document.getElementById("message");
+
+    function showMessage(text, type = "success") {
+      message.textContent = text;
+      message.className = type;
+    }
+
+    function clearMessage() {
+      message.textContent = "";
+      message.className = "";
+    }
+
+    async function loadPictures() {
+      gallery.innerHTML = "";
+      emptyMessage.style.display = "block";
+      emptyMessage.textContent = "Loading pictures...";
+
+      try {
+        const result = await storage.listFiles(BUCKET_ID);
+
+        if (!result.files || result.files.length === 0) {
+          emptyMessage.textContent = "Abhi koi picture upload nahi hui.";
+          return;
+        }
+
+        emptyMessage.style.display = "none";
+
+        result.files.forEach((file) => {
+          const previewUrl =
+            storage.getFilePreview(
+              BUCKET_ID,
+              file.$id,
+              800,
+              600
+            );
+
+          const downloadUrl =
+            storage.getFileDownload(
+              BUCKET_ID,
+              file.$id
+            );
+
+          const card = document.createElement("div");
+          card.className = "card";
+
+          card.innerHTML = `
+            <img
+              src="${previewUrl}"
+              alt="${escapeHtml(file.name)}"
+              loading="lazy"
+            />
+
+            <div class="card-content">
+              <div class="file-name">
+                ${escapeHtml(file.name)}
+              </div>
+
+              <div class="actions">
+                <button
+                  class="download-btn"
+                  onclick="downloadPicture('${downloadUrl}')"
+                >
+                  Download
+                </button>
+
+                <button
+                  class="delete-btn"
+                  onclick="deletePicture('${file.$id}')"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          `;
+
+          gallery.appendChild(card);
+        });
+      } catch (error) {
+        console.error(error);
+        emptyMessage.textContent = "Pictures load nahi ho sakin.";
+        showMessage(error.message || "Appwrite error", "error");
+      }
+    }
+
+    async function uploadPictures() {
+      clearMessage();
+
+      const files = fileInput.files;
+
+      if (!files || files.length === 0) {
+        showMessage("Pehle picture select karein.", "error");
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "Uploading...";
+
+      try {
+        for (const file of files) {
+          if (!file.type.startsWith("image/")) {
+            continue;
+          }
+
+          await storage.createFile(
+            BUCKET_ID,
+            Appwrite.ID.unique(),
+            file
+          );
+        }
+
+        fileInput.value = "";
+        showMessage("Picture successfully upload ho gayi.", "success");
+        await loadPictures();
+      } catch (error) {
+        console.error(error);
+        showMessage(
+          error.message || "Picture upload nahi ho saki.",
+          "error"
+        );
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "Upload Pictures";
+      }
+    }
+
+    async function deletePicture(fileId) {
+      const confirmDelete = confirm(
+        "Kya aap is picture ko delete karna chahte hain?"
+      );
+
+      if (!confirmDelete) {
+        return;
+      }
+
+      try {
+        await storage.deleteFile(BUCKET_ID, fileId);
+        showMessage("Picture delete ho gayi.", "success");
+        await loadPictures();
+      } catch (error) {
+        console.error(error);
+        showMessage(
+          error.message ||
+          "Picture delete nahi ho saki. Appwrite permissions check karein.",
+          "error"
+        );
+      }
+    }
+
+    function downloadPicture(url) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.click();
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    uploadBtn.addEventListener("click", uploadPictures);
+
+    loadPictures();
+  </script>
+</body>
+</html>
